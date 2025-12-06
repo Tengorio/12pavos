@@ -349,8 +349,10 @@ def show_secretsanta():
 try:
     # Attempt to init DB on start (create tables if not exist)
     # This might fail if secrets are not set, handled gracefully in login
-    pass
-except:
+    init_db()
+except Exception as e:
+    # Optional: print error to console for debugging, or ignore if it's just connection issues before config
+    print(f"DB Init failed: {e}")
     pass
 
 if not st.session_state.logged_in:
