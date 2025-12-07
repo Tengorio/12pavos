@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from db import init_db, get_session, User, Availability, Potluck, Wish
+from db import init_db, get_session, User, Availability, Potluck, Wish, Vote
 import hashlib
 import json
 import datetime
@@ -131,10 +131,13 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def logout():
-    st.session_state.logged_in = False
-    st.session_state.user_id = None
-    st.session_state.username = None
-    st.rerun()
+    st.header("Cerrar Sesión")
+    st.write("¿Estás seguro que quieres salir?")
+    if st.button("Sí, cerrar sesión", type="primary"):
+        st.session_state.logged_in = False
+        st.session_state.user_id = None
+        st.session_state.username = None
+        st.rerun()
 
 # ----------------------------------------
 # Page Functions
@@ -259,24 +262,92 @@ def show_potluck():
     if potluck_data:
         st.dataframe(pd.DataFrame(potluck_data))
         
-        if st.button("🧙 Auto-Asignar (Beta)"):
-            assigned_so_far = set()
-            all_ps = session.query(Potluck).all()
-            for p in all_ps:
-                if p.dish_1 and p.dish_1 not in assigned_so_far:
-                    p.assigned_dish = p.dish_1
-                    assigned_so_far.add(p.dish_1)
-                elif p.dish_2 and p.dish_2 not in assigned_so_far:
-                    p.assigned_dish = p.dish_2
-                    assigned_so_far.add(p.dish_2)
-                elif p.dish_3 and p.dish_3 not in assigned_so_far:
-                    p.assigned_dish = p.dish_3
-                    assigned_so_far.add(p.dish_3)
-                else:
-                    p.assigned_dish = "CONFLICTO: Hablar con Admin"
-            session.commit()
-            st.success("Asignación automática completada.")
-            st.rerun()
+        st.divider()
+        st.subheader("🗳️ Vota por tu favorito")
+        st.write("Ayuda a tus amigos a decidir qué traer. ¡Vota por la opción que más se te antoje! (Solo 1 voto por amigo)")
+
+        # Fetch Votes
+        votes = session.query(Vote).filter(Vote.voter_id == user_id).all()
+        # Map: potluck_id -> dish_choice
+        my_votes = {v.potluck_id: v.dish_choice for v in votes}
+        
+        # Calculate vote counts
+        all_votes = session.query(Vote).all()
+        vote_counts = {} # (potluck_id, dish_num) -> count
+        for v in all_votes:
+            key = (v.potluck_id, v.dish_choice)
+            vote_counts[key] = vote_counts.get(key, 0) + 1
+
+        for p in all_potlucks:
+            # Don't vote for myself? Maybe allowed? Usually yes in these groups.
+            # But let's assume voting for others is the main goal.
+            # Showing user card
+            
+            with st.container(border=True):
+                st.markdown(f"#### 👤 {p.user.name or p.user.username}")
+                
+                # Option 1
+                c1, c2, c3 = st.columns(3)
+                
+                # Helper to render option
+                def render_option(col, dish_text, dish_num):
+                    if dish_text:
+                        count = vote_counts.get((p.id, dish_num), 0)
+                        is_selected = (my_votes.get(p.id) == dish_num)
+                        
+                        btn_label = f"👍 {count}" if not is_selected else f"✅ {count}"
+                        btn_type = "primary" if is_selected else "secondary"
+                        
+                        col.markdown(f"**Opción {dish_num}:** {dish_text}")
+                        if col.button(btn_label, key=f"v_{p.id}_{dish_num}", type=btn_type):
+                            # Handle Vote
+                            # Check if existing vote for this potluck
+                            existing_vote = session.query(Vote).filter(Vote.voter_id == user_id, Vote.potluck_id == p.id).first()
+                            if existing_vote:
+                                if existing_vote.dish_choice == dish_num:
+                                    # Toggle off? Or just keep? Let's allow toggle off if same clicked
+                                    # But for simplicity, just update choice. 
+                                    # If user clicked same, maybe unvote? 
+                                    # Let's say: Update to this choice.
+                                    existing_vote.dish_choice = dish_num 
+                                else:
+                                    existing_vote.dish_choice = dish_num
+                            else:
+                                new_vote = Vote(voter_id=user_id, potluck_id=p.id, dish_choice=dish_num)
+                                session.add(new_vote)
+                            
+                            session.commit()
+                            st.rerun()
+                    else:
+                        col.caption(f"Opción {dish_num} vacía")
+
+                render_option(c1, p.dish_1, 1)
+                render_option(c2, p.dish_2, 2)
+                render_option(c3, p.dish_3, 3)
+
+        
+        # Admin assignment tool (Locked to tengorio)
+        if st.session_state.username == 'tengorio':
+            st.divider()
+            st.markdown("### 🛠️ Admin Zone")
+            if st.button("🧙 Auto-Asignar (Beta)"):
+                assigned_so_far = set()
+                all_ps = session.query(Potluck).all()
+                for p in all_ps:
+                    if p.dish_1 and p.dish_1 not in assigned_so_far:
+                        p.assigned_dish = p.dish_1
+                        assigned_so_far.add(p.dish_1)
+                    elif p.dish_2 and p.dish_2 not in assigned_so_far:
+                        p.assigned_dish = p.dish_2
+                        assigned_so_far.add(p.dish_2)
+                    elif p.dish_3 and p.dish_3 not in assigned_so_far:
+                        p.assigned_dish = p.dish_3
+                        assigned_so_far.add(p.dish_3)
+                    else:
+                        p.assigned_dish = "CONFLICTO: Hablar con Admin"
+                session.commit()
+                st.success("Asignación automática completada.")
+                st.rerun()
 
     session.close()
 

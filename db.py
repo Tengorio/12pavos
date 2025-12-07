@@ -45,7 +45,22 @@ class Wish(Base):
     claimed_by_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     
     user = relationship("User", foreign_keys=[user_id], back_populates="wishes")
+    user = relationship("User", foreign_keys=[user_id], back_populates="wishes")
     claimed_by = relationship("User", foreign_keys=[claimed_by_id], back_populates="claimed_wishes")
+
+class Vote(Base):
+    __tablename__ = 'votes'
+    id = Column(Integer, primary_key=True)
+    voter_id = Column(Integer, ForeignKey('users.id'))
+    potluck_id = Column(Integer, ForeignKey('potluck.id'))
+    dish_choice = Column(Integer) # 1, 2, or 3
+    
+    # We could add a timestamp
+    
+    # Relationships
+    voter = relationship("User")
+    potluck = relationship("Potluck")
+
 
 # Database Connection
 def get_engine():
