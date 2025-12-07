@@ -2,9 +2,122 @@ import streamlit as st
 import pandas as pd
 from db import init_db, get_session, User, Availability, Potluck, Wish
 import hashlib
+import json
+import datetime
+import random
 
 # Page Config
 st.set_page_config(page_title="Reunión Anual", page_icon="🎉", layout="wide")
+
+def load_styles():
+    st.markdown("""
+    <style>
+
+    /* --- Shared Background & Carousel --- */
+    .landing-bg {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: -2;
+        background-size: cover;
+        background-position: center;
+        background-color: #2d2a4a; /* Fallback */
+        animation: bgCarousel 20s infinite ease-in-out;
+    }
+    
+    @keyframes bgCarousel {
+        0% { background-image: url('assets/IMG-20191220-WA0023.jpg'); }
+        25% { background-image: url('assets/IMG-20220121-WA0006.jpg'); }
+        50% { background-image: url('assets/IMG-20220306-WA0039.jpg'); }
+        75% { background-image: url('assets/IMG-20220710-WA0020.jpg'); }
+        100% { background-image: url('assets/IMG-20191220-WA0023.jpg'); }
+    }
+
+    .landing-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(45, 42, 74, 0.6); /* Slightly darker for text readability */
+        z-index: -1;
+        backdrop-filter: blur(4px);
+    }
+    
+    /* --- Snow Effect --- */
+    .snow {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 100;
+        background-image: 
+            radial-gradient(4px 4px at 10% 10%, rgba(255,255,255,0.8), transparent),
+            radial-gradient(6px 6px at 20% 30%, rgba(255,255,255,0.6), transparent),
+            radial-gradient(3px 3px at 40% 70%, rgba(255,255,255,0.9), transparent),
+            radial-gradient(4px 4px at 60% 20%, rgba(255,255,255,0.7), transparent),
+            radial-gradient(5px 5px at 90% 80%, rgba(255,255,255,0.8), transparent);
+        background-size: 200px 200px;
+        animation: snowAnim 10s linear infinite;
+    }
+    
+    @keyframes snowAnim {
+        from { transform: translateY(0); }
+        to { transform: translateY(200px); }
+    }
+    
+    /* --- Card & Mobile First Layout --- */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background-color: rgba(25, 25, 35, 0.85);
+        border-radius: 20px;
+        padding: 1.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        margin: 0 auto;
+        max-width: 95vw; /* Mobile friendly max width */
+    }
+    
+    @media (min-width: 768px) {
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            padding: 2.5rem;
+            max-width: 500px; /* Limit width on desktop */
+        }
+    }
+
+    /* Style inputs inside the dark card */
+    .stTextInput label {
+        color: #eee !important;
+    }
+    
+    /* Make buttons pop */
+    button[kind="primary"] {
+        background-color: #c0392b !important; /* Christmas Red style optionally, or stick to purple */
+        /* Let's keep purple but maybe a bit more festive? Or Red for Xmas? User said "Navidad" style. */
+        /* Let's go with a nice warm red/gold accent or stick to the purple if user prefers. 
+           User said "Temática navideña", let's try a festive red. */
+        background-color: #D42426 !important;
+        border: none;
+        font-weight: bold;
+        transition: transform 0.1s;
+    }
+    button[kind="primary"]:hover {
+        transform: scale(1.02);
+        background-color: #E74C3C !important;
+    }
+    
+    h1, h2, h3 {
+        font-family: 'Helvetica Neue', sans-serif;
+    }
+
+    </style>
+    """, unsafe_allow_html=True)
+
+
+load_styles()
 
 # Session State Initialization
 if 'logged_in' not in st.session_state:
@@ -17,81 +130,15 @@ if 'username' not in st.session_state:
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-def login_page():
-    st.title("Bienvenido a la Reunión Anual 🎉")
-    
-    base_tab, login_tab, register_tab = st.tabs(["Información", "Iniciar Sesión", "Registrarse"])
-    
-    with base_tab:
-        st.markdown("""
-        ### ¡Hola amigos!
-        Esta es nuestra app oficial para organizar la reunión del año.
-        Aquí podrán:
-        - Confirmar disponibilidad.
-        - Proponer qué comida llevar (¡sin repetir!).
-        - Participar en el intercambio (Secret Santa 2.0).
-        """)
-    
-    with login_tab:
-        username = st.text_input("Usuario", key="login_user")
-        password = st.text_input("Contraseña", type="password", key="login_pass")
-        if st.button("Entrar"):
-            try:
-                session = get_session()
-                user = session.query(User).filter(User.username == username).first()
-                if user and user.password_hash == hash_password(password):
-                    st.session_state.logged_in = True
-                    st.session_state.user_id = user.id
-                    st.session_state.username = user.username
-                    st.rerun()
-                else:
-                    st.error("Usuario o contraseña incorrectos")
-                session.close()
-            except Exception as e:
-                st.error(f"Error de conexión: {e}")
+def logout():
+    st.session_state.logged_in = False
+    st.session_state.user_id = None
+    st.session_state.username = None
+    st.rerun()
 
-    with register_tab:
-        new_user = st.text_input("Nuevo Usuario", key="reg_user")
-        new_name = st.text_input("Nombre Completo (para que sepamos quién eres)", key="reg_name")
-        new_pass = st.text_input("Contraseña", type="password", key="reg_pass")
-        if st.button("Registrarme"):
-            if new_user and new_pass:
-                try:
-                    session = get_session()
-                    # Check if exists
-                    if session.query(User).filter(User.username == new_user).first():
-                        st.error("Ese usuario ya existe")
-                    else:
-                        u = User(username=new_user, password_hash=hash_password(new_pass), name=new_name)
-                        session.add(u)
-                        session.commit()
-                        st.success("¡Registro exitoso! Ahora inicia sesión.")
-                    session.close()
-                except Exception as e:
-                    st.error(f"Error al registrar: {e}")
-            else:
-                st.warning("Llena todos los campos")
-
-def main_app():
-    st.sidebar.title(f"Hola, {st.session_state.username} 👋")
-    
-    menu = ["Mi Perfil", "Comida (Potluck)", "Intercambio (Secret Santa)", "Cerrar Sesión"]
-    choice = st.sidebar.radio("Navegación", menu)
-    
-    if choice == "Mi Perfil":
-        show_profile()
-    elif choice == "Comida (Potluck)":
-        show_potluck()
-    elif choice == "Intercambio (Secret Santa)":
-        show_secretsanta()
-    elif choice == "Cerrar Sesión":
-        st.session_state.logged_in = False
-        st.session_state.user_id = None
-        st.rerun()
-
-import json
-import datetime
-import random
+# ----------------------------------------
+# Page Functions
+# ----------------------------------------
 
 def show_profile():
     st.header("📅 Mi Disponibilidad")
@@ -107,18 +154,10 @@ def show_profile():
     if avail and avail.dates_json:
         try:
             current_dates_str = json.loads(avail.dates_json)
-            # Convert strings back to date objects for display if needed, 
-            # but simpler to keep as list of strings for now or UI logic.
-            # Let's use strings for storage "YYYY-MM-DD"
             current_dates = current_dates_str
         except:
             pass
 
-    # UI for selecting dates
-    # Let's propose a multi-date picker or just adding one by one.
-    # Streamlit's date_input with defaults is tricky if dynamic. 
-    # Use a form to add a date.
-    
     with st.expander("Géstionar mis fechas", expanded=True):
         new_date = st.date_input("Agregar fecha disponible", min_value=datetime.date.today())
         if st.button("Agregar Fecha", key="add_date"):
@@ -151,7 +190,7 @@ def show_profile():
         else:
             st.info("No has seleccionado fechas aún.")
     
-    # Summary of everyone's availability (Optional but helpful)
+    # Summary of everyone's availability
     st.divider()
     st.subheader("📊 Disponibilidad del Grupo")
     all_avails = session.query(Availability).all()
@@ -220,18 +259,10 @@ def show_potluck():
     if potluck_data:
         st.dataframe(pd.DataFrame(potluck_data))
         
-        # Admin assignment tool (simple version: First Come, Unique Serve logic button)
-        # Or just manual assignment by override?
-        # Let's add a button to "Auto-Assign" based on unique strings if user is daring.
         if st.button("🧙 Auto-Asignar (Beta)"):
-            # Simple greedy algorithm
             assigned_so_far = set()
-            
-            # Reset assignments
-            # Re-query to be safe
             all_ps = session.query(Potluck).all()
             for p in all_ps:
-                # Try option 1
                 if p.dish_1 and p.dish_1 not in assigned_so_far:
                     p.assigned_dish = p.dish_1
                     assigned_so_far.add(p.dish_1)
@@ -265,7 +296,6 @@ def show_secretsanta():
     st.subheader("1. Mis Deseos")
     my_wishes = session.query(Wish).filter(Wish.user_id == user_id).all()
     
-    # Add new wish
     c1, c2 = st.columns([3, 1])
     new_wish_desc = c1.text_input("Agregar un deseo/idea", key="new_wish")
     if c2.button("Agregar Deseo"):
@@ -286,36 +316,13 @@ def show_secretsanta():
     # 2. Market
     st.subheader("2. Mercado de Regalos (Claim)")
     
-    # Check if I already claimed something? 
-    # Logic: "La persona no sepa quien le va a dar regalo ni a quien" -> 
-    # If I pick a gift, I know WHAT I bought, but do I know WHO it is for?
-    # The prompt says "don't know who they are giving to". 
-    # So I display the list of wishes anonymously. 
-    # If I click "Buy This", I am assigned. I buy it. I bring it labeled with the "ID"?
-    # We need a way to link gift to receiver at the party.
-    # Maybe generate a "Gift Code" like #104. 
-    # Receiver: "I am #104? No..." 
-    # Receiver needs to know "Who is giving to me?" No, "Assignación aleatoria donde la persona no sepa quien le va a dar regalo".
-    # Standard Secret Santa: You get a name.
-    # User Request: "sólo escoja entre los regalos".
-    # "don't know who they are giving to".
-    # Okay, so I pick "Lego Set". Implicitly I am giving to the person who asked for it. But I don't see their name.
-    # At the party, how does the gift get to the right person?
-    # The app must tell me: "Buy Lego Set. Label it with Ticket #XYZ".
-    # The receiver has Ticket #XYZ.
-    # Perfect.
-    
-    # Get all unclaimed wishes NOT from me
     available_wishes = session.query(Wish).filter(Wish.user_id != user_id, Wish.claimed_by_id == None).all()
-    
-    # My claims
     my_claims = session.query(Wish).filter(Wish.claimed_by_id == user_id).all()
     
     if my_claims:
         st.success(f"🎁 Ya has escogido {len(my_claims)} regalo(s) para comprar:")
         for c in my_claims:
             st.info(f"🎁 **{c.description}**\n\n🏷️ **Etiqueta el regalo con el ID: #{c.id}** (¡No pongas el nombre del destinatario, solo este número!)")
-            # Option to release?
             if st.button(f"Soltar #{c.id}", key=f"release_{c.id}"):
                 c.claimed_by_id = None
                 session.commit()
@@ -323,8 +330,6 @@ def show_secretsanta():
     
     st.write("### Regalos disponibles para escoger:")
     if available_wishes:
-        # Shuffle specifically for display so order doesn't reveal user groups
-        # converting to list to shuffle
         display_wishes = list(available_wishes)
         random.shuffle(display_wishes)
         
@@ -332,8 +337,6 @@ def show_secretsanta():
             col1, col2 = st.columns([4, 1])
             col1.write(f"❓ {w.description}")
             if col2.button("✋ Yo lo compro", key=f"claim_{w.id}"):
-                # Claim it
-                # Check race condition technically, but low volume
                 w.claimed_by_id = user_id
                 session.commit()
                 st.balloons()
@@ -343,19 +346,137 @@ def show_secretsanta():
     
     session.close()
 
+def login_page():
+    if 'auth_mode' not in st.session_state:
+        st.session_state.auth_mode = 'landing'
+
+    # Background and Snow
+    st.markdown("""
+        <div class="landing-bg"></div>
+        <div class="landing-overlay"></div>
+        <div class="snow"></div>
+    """, unsafe_allow_html=True)
+    
+    # ------------------
+    # LANDING VIEW
+    # ------------------
+    if st.session_state.auth_mode == 'landing':
+        st.markdown("""
+            <div class="landing-container">
+            </div>
+            <style>
+            [data-testid="stHeader"] {display: none;}
+            .block-container {padding-top: 0; padding-bottom: 0;}
+            </style>
+        """, unsafe_allow_html=True)
+        
+        # Center Content
+        # Mobile-First: We use columns, but on mobile columns stack. 
+        # To ensure centering on desktop, we use [1,2,1] and put content in middle.
+        # On mobile, the middle column will just take width (if we handle it right).
+        
+        col1, col2, col3 = st.columns([1, 6, 1]) # Wider center for mobile by default? No, layout="wide" might stretch it.
+        # Better: Use [1, 1, 1] but with max-width CSS on the container (already added).
+        
+        c1, c2, c3 = st.columns([1, 10, 1]) # Use almost full width, let CSS constrain max-width
+        
+        with c2:
+             # Spacer
+            st.markdown("<div style='height: 25vh;'></div>", unsafe_allow_html=True)
+            
+            with st.container(border=True):
+                st.markdown("<h1 style='text-align: center; color: white;'>🎄 Reunión Anual 2025 🎅</h1>", unsafe_allow_html=True)
+                st.markdown("<p style='text-align: center; color: #eee; margin-bottom: 25px; font-size: 1.1rem;'>🎁 Intercambio · 🍲 Cena · 🎉 Fiesta</p>", unsafe_allow_html=True)
+                
+                b1, b2 = st.columns(2)
+                if b1.button("Iniciar Sesión", use_container_width=True, type="primary"):
+                    st.session_state.auth_mode = 'login'
+                    st.rerun()
+                if b2.button("Registrarse", use_container_width=True):
+                    st.session_state.auth_mode = 'register'
+                    st.rerun()
+
+    # ------------------
+    # LOGIN VIEW
+    # ------------------
+    elif st.session_state.auth_mode == 'login':
+        c1, c2, c3 = st.columns([1, 10, 1])
+        with c2:
+            st.markdown("<div style='height: 20vh;'></div>", unsafe_allow_html=True)
+            with st.container(border=True):
+                st.subheader("Iniciar Sesión")
+                username = st.text_input("Usuario", key="login_user")
+                password = st.text_input("Contraseña", type="password", key="login_pass")
+                
+                if st.button("Entrar", type="primary", use_container_width=True):
+                    session = get_session()
+                    user = session.query(User).filter(User.username == username).first()
+                    if user and user.password_hash == hash_password(password):
+                        st.session_state.logged_in = True
+                        st.session_state.user_id = user.id
+                        st.session_state.username = user.username
+                        st.rerun()
+                    else:
+                        st.error("Usuario o contraseña incorrectos")
+                    session.close()
+                
+                if st.button("⬅️ Volver", use_container_width=True):
+                    st.session_state.auth_mode = 'landing'
+                    st.rerun()
+
+    # ------------------
+    # REGISTER VIEW
+    # ------------------
+    elif st.session_state.auth_mode == 'register':
+        c1, c2, c3 = st.columns([1, 10, 1])
+        with c2:
+            st.markdown("<div style='height: 15vh;'></div>", unsafe_allow_html=True)
+            with st.container(border=True):
+                st.subheader("Registrarse")
+                new_user = st.text_input("Nuevo Usuario", key="reg_user")
+                new_name = st.text_input("Nombre Completo", key="reg_name")
+                new_pass = st.text_input("Contraseña", type="password", key="reg_pass")
+                
+                if st.button("Registrarme", type="primary", use_container_width=True):
+                    session = get_session()
+                    if session.query(User).filter(User.username == new_user).first():
+                        st.error("Ese usuario ya existe")
+                    else:
+                        u = User(username=new_user, password_hash=hash_password(new_pass), name=new_name)
+                        session.add(u)
+                        session.commit()
+                        st.success("Registro exitoso.")
+                        st.session_state.auth_mode = 'login'
+                        st.rerun()
+                    session.close()
+
+                if st.button("⬅️ Volver", use_container_width=True):
+                    st.session_state.auth_mode = 'landing'
+                    st.rerun()
 
 
+# ----------------------------------------
 # Main Execution Flow
+# ----------------------------------------
+
 try:
-    # Attempt to init DB on start (create tables if not exist)
-    # This might fail if secrets are not set, handled gracefully in login
     init_db()
 except Exception as e:
-    # Optional: print error to console for debugging, or ignore if it's just connection issues before config
     print(f"DB Init failed: {e}")
     pass
 
 if not st.session_state.logged_in:
     login_page()
 else:
-    main_app()
+    # Sidebar Greeting
+    with st.sidebar:
+        st.title(f"Hola, {st.session_state.username} 👋")
+
+    # Multipage Navigation
+    pg = st.navigation([
+        st.Page(show_profile, title="Mi Perfil", icon="👤"),
+        st.Page(show_potluck, title="Comida (Potluck)", icon="🍲"),
+        st.Page(show_secretsanta, title="Intercambio (Secret Santa)", icon="🎁"),
+        st.Page(logout, title="Cerrar Sesión", icon="🚪"),
+    ])
+    pg.run()

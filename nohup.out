@@ -5,3 +5,17 @@
   Network URL: http://172.23.145.151:8501
 
 gio: http://localhost:8501: Operation not supported
+DB Init failed: (sqlite3.OperationalError) table users already exists
+[SQL: 
+CREATE TABLE users (
+	id INTEGER NOT NULL, 
+	username VARCHAR(50) NOT NULL, 
+	password_hash VARCHAR(128) NOT NULL, 
+	name VARCHAR(100), 
+	PRIMARY KEY (id), 
+	UNIQUE (username)
+)
+
+]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+  Stopping...
