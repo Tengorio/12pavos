@@ -49,33 +49,9 @@ class Wish(Base):
 
 # Database Connection
 def get_engine():
-    try:
-        # Construct connection string from secrets
-        # Expecting structure: [connections.sql]
-        db_conf = st.secrets["connections"]["sql"]
-        # Handle different dialects if necessary, assuming postgres/mysql compatible URL construction
-        # url = f"{db_conf['dialect']}://{db_conf['username']}:{db_conf['password']}@{db_conf['host']}:{db_conf['port']}/{db_conf['database']}"
-        # Or if the user puts the full url in secrets, simpler.
-        # Let's construct it carefully considering the dialect.
-        driver = db_conf.get("dialect", "postgresql")
-        user = db_conf["username"]
-        password = db_conf["password"]
-        host = db_conf["host"]
-        port = db_conf["port"]
-        dbname = db_conf["database"]
-        
-        if "postgres" in driver:
-            driver = "postgresql+psycopg2"
-        elif "mysql" in driver:
-            driver = "mysql+pymysql"
-            
-        url = f"{driver}://{user}:{password}@{host}:{port}/{dbname}"
-        return create_engine(url)
-    except Exception as e:
-        # Fallback for dev/testing if secrets missing? No, we need to fail or warn.
-        # But for the initial run, maybe we want to allow a local sqlite fallback if secrets fail?
-        # User explicitly asked for remote DB.
-        raise e
+    # Setup for local SQLite database
+    # This removes dependency on st.secrets as requested for V2
+    return create_engine("sqlite:///reunion.db")
 
 def init_db():
     engine = get_engine()
